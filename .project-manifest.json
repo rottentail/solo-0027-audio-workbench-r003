@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "name": "solo-0027-audio-workbench",
+  "project_shape": "backend",
+  "modules": [
+    {
+      "id": "server",
+      "path": "audio_workbench/server.py",
+      "responsibility": "HTTP request boundary"
+    },
+    {
+      "id": "service",
+      "path": "audio_workbench/service.py",
+      "responsibility": "request validation and orchestration"
+    },
+    {
+      "id": "waveio",
+      "path": "audio_workbench/waveio.py",
+      "responsibility": "PCM WAV decoding and encoding"
+    },
+    {
+      "id": "processing",
+      "path": "audio_workbench/processing.py",
+      "responsibility": "audio measurements and transformations"
+    },
+    {
+      "id": "jobs",
+      "path": "audio_workbench/jobs.py",
+      "responsibility": "persistent media queue and FFmpeg worker pool"
+    },
+    {
+      "id": "media",
+      "path": "audio_workbench/media.py",
+      "responsibility": "constrained FFmpeg command construction"
+    },
+    {
+      "id": "catalog",
+      "path": "audio_workbench/catalog.py",
+      "responsibility": "SQLite transactions and atomic content files"
+    },
+    {
+      "id": "assets",
+      "path": "audio_workbench/assets.py",
+      "responsibility": "immutable content-addressed WAV library"
+    },
+    {
+      "id": "projects",
+      "path": "audio_workbench/projects.py",
+      "responsibility": "optimistic immutable arrangement revisions"
+    },
+    {
+      "id": "arrangement",
+      "path": "audio_workbench/arrangement.py",
+      "responsibility": "editable document validation and frozen frame plans"
+    },
+    {
+      "id": "rendering",
+      "path": "audio_workbench/rendering.py",
+      "responsibility": "ordered PCM arrangement rendering and cancellation"
+    },
+    {
+      "id": "render_queue",
+      "path": "audio_workbench/render_queue.py",
+      "responsibility": "durable frozen-revision render execution and publication"
+    },
+    {
+      "id": "workbench",
+      "path": "audio_workbench/workbench.py",
+      "responsibility": "exclusive workspace ownership and service lifecycle"
+    }
+  ],
+  "complexity": {
+    "mechanisms": [
+      "error_propagation",
+      "resource_lifecycle",
+      "state_transition",
+      "concurrency",
+      "immutable_revision",
+      "content_addressing",
+      "sample_timebase",
+      "optimistic_concurrency",
+      "atomic_publication"
+    ]
+  },
+  "workflows": [
+    {
+      "id": "inspect",
+      "name": "Inspect audio",
+      "entry": "POST /inspect",
+      "steps": [
+        "decode and validate WAV",
+        "calculate duration and peak"
+      ],
+      "success": "returns audio properties",
+      "failure": "returns a validation error",
+      "verification": "HTTP validation reads generated PCM",
+      "module_ids": [
+        "server",
+        "service",
+        "waveio",
+        "processing"
+      ]
+    },
+    {
+      "id": "clip",
+      "name": "Render clip",
+      "entry": "POST /clip",
+      "steps": [
+        "validate interval and gain",
+        "slice and render PCM"
+      ],
+      "success": "returns a WAV clip",
+      "failure": "rejects invalid intervals",
+      "verification": "HTTP check decodes rendered clip",
+      "module_ids": [
+        "server",
+        "service",
+        "waveio",
+        "processing"
+      ]
+    },
+    {
+      "id": "mix",
+      "name": "Mix tracks",
+      "entry": "POST /mix",
+      "steps": [
+        "validate compatible tracks",
+        "align and sum samples",
+        "encode output"
+      ],
+      "success": "returns mixed WAV",
+      "failure": "rejects incompatible formats",
+      "verification": "HTTP check verifies mixed samples",
+      "module_ids": [
+        "server",
+        "service",
+        "waveio",
+        "processing"
+      ]
+    },
+    {
+      "id": "media-jobs",
+      "name": "Render media jobs",
+      "entry": "POST /jobs",
+      "steps": [
+        "validate and persist source",
+        "claim queued job atomically",
+        "run FFmpeg and finalize result"
+      ],
+      "success": "returns a durable checked result",
+      "failure": "records failure or cancellation",
+      "verification": "HTTP validation renders video and audio and checks recovery",
+      "module_ids": [
+        "server",
+        "jobs",
+        "media"
+      ]
+    },
+    {
+      "id": "timeline",
+      "name": "Compose audiovisual timeline",
+      "entry": "POST /jobs",
+      "steps": [
+        "validate and persist segment ranges",
+        "normalize media streams",
+        "concatenate synchronized segments"
+      ],
+      "success": "returns combined audiovisual media",
+      "failure": "records invalid or incompatible media",
+      "verification": "HTTP validation compares video frames and audio duration",
+      "module_ids": [
+        "server",
+        "jobs",
+        "media"
+      ]
+    },
+    {
+      "id": "arrangement-render",
+      "name": "Revise and render a multitrack arrangement",
+      "entry": "POST /assets -> POST /projects -> POST /projects/{id}/render",
+      "steps": [
+        "validate immutable PCM asset",
+        "append canonical optimistic revision",
+        "freeze sample-level render manifest",
+        "claim durable queue record",
+        "render ordered gains and publish checked WAV"
+      ],
+      "success": "historical revision renders the same PCM after edits or archival",
+      "failure": "rejects stale edits or marks failed/cancelled render without result",
+      "verification": "python -m unittest discover -v",
+      "module_ids": [
+        "server",
+        "catalog",
+        "assets",
+        "projects",
+        "arrangement",
+        "rendering",
+        "render_queue",
+        "workbench"
+      ]
+    }
+  ]
+}

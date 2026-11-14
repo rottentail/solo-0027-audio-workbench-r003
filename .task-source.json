@@ -1,0 +1,302 @@
+{
+  "task_source_schema_version": 1,
+  "cc_feedback_profile": "cc-feedback-2611",
+  "project_domain": "游戏、图形与多媒体",
+  "project_subdirection": "音视频处理",
+  "supported_task_types": [
+    "功能开发",
+    "Bugfix",
+    "代码重构",
+    "功能优化",
+    "依赖升级与迁移",
+    "质量保障",
+    "项目维护",
+    "技术讨论",
+    "问题排查与诊断",
+    "部署运维",
+    "泛Agent需求"
+  ],
+  "entities": [
+    {
+      "id": "audio",
+      "label": "PCM 音频素材",
+      "relations": [
+        "track.references.audio"
+      ],
+      "invariants": [
+        "16 位 PCM，声道数为 1 或 2"
+      ]
+    },
+    {
+      "id": "track",
+      "label": "混音轨道",
+      "relations": [
+        "track.references.audio"
+      ],
+      "invariants": [
+        "混音中的采样率和声道数一致"
+      ]
+    },
+    {
+      "id": "render",
+      "label": "处理结果",
+      "relations": [
+        "render.derived_from.audio"
+      ],
+      "invariants": [
+        "样本值保持在 16 位范围"
+      ]
+    },
+    {
+      "id": "job",
+      "label": "媒体处理任务",
+      "relations": [
+        "job.produces.result"
+      ],
+      "invariants": [
+        "成功状态对应校验过的结果",
+        "已完成任务不能取消"
+      ]
+    },
+    {
+      "id": "segment",
+      "label": "时间线片段",
+      "relations": [
+        "segment.belongs_to.job"
+      ],
+      "invariants": [
+        "每段同时包含音轨和视频轨",
+        "片段时长总计不超过上限"
+      ]
+    },
+    {
+      "id": "asset",
+      "label": "不可变 WAV 素材",
+      "relations": [
+        "clip.references.asset"
+      ],
+      "invariants": [
+        "内容寻址和读取摘要校验",
+        "归档不删除历史引用的内容"
+      ]
+    },
+    {
+      "id": "project_revision",
+      "label": "编排工程修订",
+      "relations": [
+        "revision.contains.clips",
+        "render.freezes.revision"
+      ],
+      "invariants": [
+        "乐观写入避免覆盖其他编辑",
+        "历史修订不受头修订修改影响"
+      ]
+    },
+    {
+      "id": "render_manifest",
+      "label": "冻结采样级渲染计划",
+      "relations": [
+        "render_manifest.references.asset",
+        "render_manifest.belongs_to.revision"
+      ],
+      "invariants": [
+        "时基和源摘要在接受任务前冻结",
+        "顺序增益叠加后应用主增益并削波"
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "subject": "render",
+      "states": [
+        "received",
+        "validated",
+        "rendered",
+        "rejected"
+      ],
+      "transitions": [
+        "received->validated",
+        "received->rejected",
+        "validated->rendered",
+        "validated->rejected"
+      ],
+      "invariants": [
+        "无效请求不会产生结果"
+      ]
+    },
+    {
+      "subject": "job",
+      "states": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ],
+      "transitions": [
+        "queued->running",
+        "queued->cancelled",
+        "running->succeeded",
+        "running->failed",
+        "running->cancelled"
+      ],
+      "invariants": [
+        "重启后中断任务转为失败",
+        "产物落盘后才标记成功"
+      ]
+    }
+  ],
+  "capability_families": [
+    {
+      "family": "媒体解析与验证",
+      "occupied_by": [
+        "inspect"
+      ],
+      "available": true
+    },
+    {
+      "family": "片段渲染",
+      "occupied_by": [
+        "clip"
+      ],
+      "available": true
+    },
+    {
+      "family": "混音合成",
+      "occupied_by": [
+        "mix"
+      ],
+      "available": true
+    },
+    {
+      "family": "时间线与同步",
+      "occupied_by": [
+        "timeline"
+      ],
+      "available": true
+    },
+    {
+      "family": "采样率与声道转换",
+      "occupied_by": [
+        "mix format conversion"
+      ],
+      "available": true
+    },
+    {
+      "family": "并发与锁",
+      "occupied_by": [
+        "job claim"
+      ],
+      "available": true
+    },
+    {
+      "family": "恢复与回滚",
+      "occupied_by": [
+        "restart recovery"
+      ],
+      "available": true
+    },
+    {
+      "family": "导出与冻结",
+      "occupied_by": [
+        "atomic result output"
+      ],
+      "available": true
+    }
+  ],
+  "extension_seams": [
+    {
+      "id": "formats",
+      "anchor": "waveio decode",
+      "entry": "decode",
+      "distinct_outcome": "支持额外输入编码",
+      "mechanism": "format_validation"
+    },
+    {
+      "id": "effects",
+      "anchor": "processing clip",
+      "entry": "clip",
+      "distinct_outcome": "提供更多音频效果",
+      "mechanism": "sample_transform"
+    },
+    {
+      "id": "resampling",
+      "anchor": "processing conform",
+      "entry": "mix target format",
+      "distinct_outcome": "支持抗混叠降采样",
+      "mechanism": "sample_rate_conversion"
+    },
+    {
+      "id": "timeline",
+      "anchor": "media timeline_command",
+      "entry": "timeline segments",
+      "distinct_outcome": "支持片段交叠与转场",
+      "mechanism": "timebase_alignment"
+    },
+    {
+      "id": "presets",
+      "anchor": "media PRESETS",
+      "entry": "job options",
+      "distinct_outcome": "增加媒体编码配置",
+      "mechanism": "subprocess_execution"
+    },
+    {
+      "id": "recovery",
+      "anchor": "jobs startup",
+      "entry": "job state",
+      "distinct_outcome": "恢复中断的处理",
+      "mechanism": "durable_state_transition"
+    },
+    {
+      "id": "arrangement-effects",
+      "anchor": "arrangement._prepare and rendering.render_manifest",
+      "entry": "project document",
+      "distinct_outcome": "编排中的动态音频处理",
+      "mechanism": "sample_transform"
+    },
+    {
+      "id": "pcm-execution",
+      "anchor": "processing.conform/mix and rendering.render_manifest",
+      "entry": "legacy PCM and frozen project rendering",
+      "distinct_outcome": "在保留样本取整契约下改善资源消耗",
+      "mechanism": "resource_lifecycle"
+    }
+  ],
+  "tension_points": [
+    {
+      "workflow_id": "inspect",
+      "description": "读取头部与验证实际样本长度必须一致",
+      "observable_failure": "截断素材被接受或时长错误"
+    },
+    {
+      "workflow_id": "clip",
+      "description": "时间换算和声道帧边界需一致",
+      "observable_failure": "输出区间偏移或声道错位"
+    },
+    {
+      "workflow_id": "mix",
+      "description": "异构音轨的插值、声道转换、时间偏移和饱和叠加必须在同一采样时基下完成",
+      "observable_failure": "轨道错位、声道错配或数值回绕"
+    },
+    {
+      "workflow_id": "media-jobs",
+      "description": "并发领取、取消和产物保存必须协调数据库状态与子进程生命周期",
+      "observable_failure": "重复处理、取消后保存产物或成功状态指向不完整结果"
+    },
+    {
+      "workflow_id": "timeline",
+      "description": "不同帧率、采样率和画幅的片段裁剪后必须统一时间基准并保持音画时长一致",
+      "observable_failure": "拼接处音画错位、画面变形或片段边界丢帧"
+    },
+    {
+      "workflow_id": "arrangement-render",
+      "description": "编辑修订、素材归档、冻结计划和实际样本渲染必须保持同一源引用与时基",
+      "observable_failure": "旧修订音频改变或错用新素材"
+    },
+    {
+      "workflow_id": "render-publication",
+      "description": "取消、工作线程和文件/数据库发布边界必须协调",
+      "observable_failure": "取消后仍发布结果或成功记录指向未提交文件"
+    }
+  ]
+}

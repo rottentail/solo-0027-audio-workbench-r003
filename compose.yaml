@@ -1,0 +1,11 @@
+services:
+  audio:
+    build: .
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - audio-data:/data
+    stop_grace_period: 30s
+    restart: unless-stopped
+volumes:
+  audio-data:
