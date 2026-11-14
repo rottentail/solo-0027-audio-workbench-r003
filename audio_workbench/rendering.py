@@ -48,7 +48,7 @@ def render_manifest(manifest, read_asset, cancelled=lambda: False, progress=lamb
         for frame in range(output_frames):
             if frame % 2048 == 0:
                 checkpoint()
-            source_frame = frame % 2048 if clip['at_frame'] else frame
+            source_frame = frame
             position = source_frame * source.rate / rate
             first = min(int(position), count - 1)
             second = min(first + 1, count - 1)
